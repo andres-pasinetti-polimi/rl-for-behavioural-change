@@ -1,1 +1,1 @@
-# reinforcement-learning-from-human-behavioural-change
+# rl-for-behavioural-change
