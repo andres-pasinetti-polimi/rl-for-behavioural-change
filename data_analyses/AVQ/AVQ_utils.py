@@ -28,6 +28,13 @@ def get_hhs_for_population(population, no_none=False):
     return hhs_list#, physical_activity_items_list, alcohol_items_list, diet_items_list
 
 
+def get_int_or_none(value):
+    if can_convert_to_int(value):
+        return value
+    else:
+        return None
+                
+
 def get_dem_hhs_for_population(population, no_none=True):
     hhs_list = get_hhs_for_population(population)
     demography_var = ['ETAMi',  # età
@@ -39,11 +46,11 @@ def get_dem_hhs_for_population(population, no_none=True):
     dem_hhs_list = []
     for i in range(len(hhs_list)):
         if not None in hhs_list[i].values():
-            demography = {'età': population.iloc[i]['ETAMi'],
-                          'sesso': population.iloc[i]['SESSO'],
-                          'stato civile': population.iloc[i]['STCIVMi'],
-                          'istruzione': population.iloc[i]['ISTRMi'],
-                          'soddisfazione economica': population.iloc[i]['SITEC']
+            demography = {'età': get_int_or_none(population.iloc[i]['ETAMi']),
+                          'sesso': get_int_or_none(population.iloc[i]['SESSO']),
+                          'stato civile': get_int_or_none(population.iloc[i]['STCIVMi']),
+                          'istruzione': get_int_or_none(population.iloc[i]['ISTRMi']),
+                          'soddisfazione economica': get_int_or_none(population.iloc[i]['SITEC'])
             }
             population.iloc[i][demography_var]
             dem_hhs_list.append({'demography': demography, 'hhs': hhs_list[i]})
@@ -492,8 +499,117 @@ def plot_var(df, var):
 
 
 
+def dem_converter(demography):
+    demography_conversions = {  
+        'età': {
+            10: '35-44',
+            11: '45-54',
+            12: '55-59',
+            13: '60-64',
+            14: '65-74',
+            15: '75+'},
+        'sesso': {
+            1: 'maschio', 
+            2: 'femmina'},
+        'stato civile': {
+            1: 'celibe/nubile',
+            2: 'coniugato/a coabitante con il coniuge; unito/a civilmente',
+            3: 'separato/a di fatto; separato/a legalmente; divorziato/a; gia\' in unione civile (per scioglimento unione)',
+            6: 'vedovo/a; gia\' in unione civile (per decesso del partner)',
+            9: 'non disponibile'},
+        'istruzione': {
+            1: 'laurea e post-laurea',
+            7: 'diploma',
+            9: 'licenza di scuola media',
+            10: 'licenza di scuola elementare, nessun titolo di studio',
+            99: 'non disponibile'},
+        'soddisfazione economica': {
+            1: 'molto',
+            2: 'abbastanza',
+            3: 'poco',
+            4: 'per niente'}
+    }
+
+    # Convert the input dictionary
+    dem_conv = {}
+    for key, value in demography.items():
+        if key in demography_conversions:  # Check if the key has a conversion
+            dem_conv[key] = demography_conversions[key].get(int(value), int(value))  # Convert or keep original value
+        else:
+            print('no key')
+            dem_conv[key] = value  # Keep as is if key has no mapping
+    
+    return dem_conv
 
 from collections import Counter
+
+def plot_dem_distribution(population, name_population, figsize=(15, 4)):
+    # Extract original demographies (before conversion)
+    dem_list = [d["demography"] for d in population if "demography" in d]
+    
+    dem_vars = list(dem_list[0].keys())
+    
+    # Number of variables
+    num_vars = len(dem_vars)
+    
+    # Create a single row of subplots
+    fig, axes = plt.subplots(1, num_vars, figsize=figsize, sharey=True)
+
+    for i, var in enumerate(dem_vars):
+        dem_var_list = [dem[var] for dem in dem_list]
+        # Count the occurrences of values
+        value_counts = Counter(dem_var_list)
+        total_count = sum(value_counts.values())
+        percentages = {key: (count / total_count) * 100 for key, count in value_counts.items()}
+        
+        # Align the value counts by index
+        aligned_counts = pd.DataFrame({
+            name_population: percentages
+        }).sort_index()  # Align and sort by index
+
+        # Sort values for plotting
+        sorted_values = sorted(value_counts.keys())  # Sort by the original values
+        
+        # Bar width and offsets
+        bar_width = 0.35
+        bar_positions = range(len(sorted_values))  # Use positions matching sorted values
+
+        axes[i].bar(
+            bar_positions, [percentages[key] for key in sorted_values],  # Sort bars based on original order
+            width=bar_width, color='skyblue', edgecolor='black'
+        )
+        
+        # Customize the subplot
+        axes[i].set_title(f'{var}')
+        #axes[i].set_xlabel(f'{var}')
+        
+        # Set x-ticks and x-tick labels
+        axes[i].set_xticks(bar_positions)  # Set tick positions based on bar positions
+        axes[i].set_ylim(0, 100)  # Set y-axis limits
+
+        if i == 0:  # Only the first plot gets a ylabel
+            axes[i].set_ylabel('Percentage')
+        axes[i].grid(axis='y', linestyle='--', alpha=0.7)
+
+        # Convert x-tick labels using dem_converter
+        converted_labels = [dem_converter({var: label})[var] for label in sorted_values]
+        
+        # Abbreviate or wrap the labels for better readability
+        def abbreviate_label(label, max_length=20):
+            if len(label) > max_length:
+                return label[:max_length] + '...'  # Truncate and add ellipsis
+            return label
+        
+        shortened_labels = [abbreviate_label(str(label)) for label in converted_labels]
+        axes[i].set_xticklabels(labels=shortened_labels, rotation=45, ha='right')
+    
+    # Adjust layout
+    fig.suptitle(f'Population: {name_population}', y=1.02)
+    plt.tight_layout()
+    plt.show()
+    plt.close(fig)
+
+
 def plot_pop_var_perc(hhs_pop_dict, pillar, figsize=(5, 3)):
     hhs_pop = list(hhs_pop_dict.items())[0][1]
     hhs_list = [hhs[pillar] for hhs in hhs_pop]
@@ -583,9 +699,9 @@ def plot_2_pop_hhs_perc(hhs_populations, pillar, figsize=(4, 3)):
 
 
 
-def plot_hhs_population(hhs_population, name_population, figsize=(8, 4)):
+def plot_hhs_distribution(population, name_population, figsize=(6, 4), legend=False):
     pillars = ['Smoking', 'Physical Activity', 'Alcohol', 'Diet', 'Mental Wellbeing']
-    hhs_by_pillar = {pillar: [hhs[pillar] for hhs in hhs_population] for pillar in pillars}
+    hhs_by_pillar = {pillar: [d['hhs'][pillar] for d in population] for pillar in pillars}
     hhs_avail_by_pillar = {
         pillar: [hhs for hhs in hhs_by_pillar[pillar] if hhs is not None] 
         for pillar in pillars
@@ -627,11 +743,12 @@ def plot_hhs_population(hhs_population, name_population, figsize=(8, 4)):
         aligned_counts.index,
         rotation=0,
     )
-    plt.title(f'HHS distribution by pillar - {name_population}', fontsize=14)
+    plt.title(f'HHS distribution - {name_population}', fontsize=14)
     plt.xlabel('HHS')
     plt.ylabel('Percentage')
     plt.ylim(0, 90)
-    plt.legend(title='Pillars', loc='center left', bbox_to_anchor=(1, 0.5))
+    if legend:
+        plt.legend(title='Pillars', loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
 
